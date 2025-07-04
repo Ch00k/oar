@@ -1,6 +1,8 @@
 package project
 
 import (
+	"fmt"
+
 	"github.com/ch00k/oar/cmd/output"
 	"github.com/ch00k/oar/cmd/utils"
 	"github.com/ch00k/oar/internal/app"
@@ -33,8 +35,13 @@ func NewCmdProjectShow() *cobra.Command {
 				return
 			}
 
-			if err := output.PrintProjectDetails(project); err != nil {
+			out, err := output.PrintProjectDetails(project, false)
+			if err != nil {
 				utils.HandleCommandError("printing project details table", err)
+			}
+
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), out); err != nil {
+				utils.HandleCommandError("printing project details", err, "project_id", projectID)
 			}
 		},
 	}

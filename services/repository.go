@@ -10,6 +10,7 @@ import (
 
 type ProjectRepository interface {
 	FindByID(id uuid.UUID) (*Project, error)
+	FindByName(name string) (*Project, error)
 	Create(project *Project) (*Project, error)
 	List() ([]*Project, error)
 	Delete(id uuid.UUID) error
@@ -36,6 +37,14 @@ func (r *projectRepository) List() ([]*Project, error) {
 func (r *projectRepository) FindByID(id uuid.UUID) (*Project, error) {
 	var model models.ProjectModel
 	if err := r.db.First(&model, id).Error; err != nil {
+		return nil, err
+	}
+	return r.mapper.ToDomain(&model), nil
+}
+
+func (r *projectRepository) FindByName(name string) (*Project, error) {
+	var model models.ProjectModel
+	if err := r.db.Where("name = ?", name).First(&model).Error; err != nil {
 		return nil, err
 	}
 	return r.mapper.ToDomain(&model), nil

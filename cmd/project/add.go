@@ -34,8 +34,13 @@ Oar will clone the repository and detect Docker Compose files automatically.`,
 				return
 			}
 
-			if err := output.PrintProjectDetails(createdProject); err != nil {
+			out, err := output.PrintProjectDetails(createdProject, true)
+			if err != nil {
 				utils.HandleCommandError("printing project details table", err)
+			}
+
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), out); err != nil {
+				utils.HandleCommandError("printing project details", err)
 			}
 		},
 	}

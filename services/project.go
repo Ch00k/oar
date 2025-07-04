@@ -79,6 +79,14 @@ func (s *ProjectService) GetProject(id uuid.UUID) (*Project, error) {
 	return project, nil
 }
 
+func (s *ProjectService) GetProjectByName(name string) (*Project, error) {
+	project, err := s.projectRepository.FindByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find project with name %s: %w", name, err)
+	}
+	return project, nil
+}
+
 // CreateProject creates a new project
 func (s *ProjectService) CreateProject(project *Project) (*Project, error) {
 	project.WorkingDir = filepath.Join(s.config.WorkspaceDir, project.ID.String())

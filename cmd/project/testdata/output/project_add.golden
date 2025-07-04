@@ -1,0 +1,5 @@
+                ID  {{ .ProjectID }}
+              Name  {{ .ProjectName }}
+ Working Directory  {{ .ProjectsDir }}/{{ .ProjectID }}
+            Status  stopped
+
