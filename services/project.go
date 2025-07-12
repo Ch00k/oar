@@ -149,12 +149,12 @@ func (s *ProjectService) DeployStreaming(
 
 	// Pull latest changes if requested
 	if pull {
-		outputChan <- "Pulling latest changes from Git..."
+		outputChan <- "OAR_MSG:default:Pulling latest changes from Git..."
 		if err := s.pullLatestChanges(project); err != nil {
-			outputChan <- fmt.Sprintf("ERROR: Failed to pull latest changes: %v", err)
+			outputChan <- fmt.Sprintf("OAR_MSG:error:Failed to pull latest changes: %v", err)
 			return fmt.Errorf("failed to pull latest changes: %w", err)
 		}
-		outputChan <- "Git pull completed successfully"
+		outputChan <- "OAR_MSG:success:Git pull completed successfully"
 	}
 
 	commitHash, err := s.gitService.GetLatestCommit(gitDir)
@@ -174,6 +174,7 @@ func (s *ProjectService) DeployStreaming(
 
 	composeProject := NewComposeProject(project)
 
+	outputChan <- "OAR_MSG:default:Starting Docker Compose deployment..."
 	err = composeProject.UpStreaming(outputChan)
 	if err != nil {
 		slog.Error(
@@ -190,6 +191,8 @@ func (s *ProjectService) DeployStreaming(
 		"project_id",
 		project.ID,
 	)
+
+	outputChan <- "OAR_MSG:success:Docker Compose deployment completed successfully"
 
 	// Update deployment
 	deployment.Status = DeploymentStatusCompleted
@@ -356,6 +359,7 @@ func (s *ProjectService) StopStreaming(projectID uuid.UUID, outputChan chan<- st
 
 	composeProject := NewComposeProject(project)
 
+	outputChan <- "OAR_MSG:default:Starting Docker Compose shutdown..."
 	err = composeProject.DownStreaming(outputChan)
 	if err != nil {
 		slog.Error(
@@ -372,6 +376,8 @@ func (s *ProjectService) StopStreaming(projectID uuid.UUID, outputChan chan<- st
 		"project_id",
 		project.ID,
 	)
+
+	outputChan <- "OAR_MSG:success:Docker Compose shutdown completed successfully"
 
 	project.Status = ProjectStatusStopped
 	return s.Update(project)
