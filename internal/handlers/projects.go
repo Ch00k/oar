@@ -144,27 +144,23 @@ func (h *ProjectHandlers) handleStreaming(w http.ResponseWriter, r *http.Request
 		flushResponse(w)
 	}
 
-	// Handle completion
+	// Handle completion - services already send completion messages as JSON
 	serviceErr := <-done
 	if serviceErr != nil {
 		slog.Error("Handler operation failed",
 			"layer", "handler",
 			"operation", "streaming",
 			"error", serviceErr)
-		if _, err := fmt.Fprintf(w, "event: complete-error\ndata: %s: %v\n\n", errorMsgPrefix, serviceErr); err != nil {
-			slog.Error("Handler operation failed",
-				"layer", "handler",
-				"operation", "stream_completion",
-				"error", err)
-		}
-	} else {
-		if _, err := fmt.Fprintf(w, "event: complete-success\ndata: %s\n\n", successMsg); err != nil {
+		// Send error completion as JSON message
+		errorMsg := fmt.Sprintf(`{"type":"error","message":"%s: %v"}`, errorMsgPrefix, serviceErr)
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", errorMsg); err != nil {
 			slog.Error("Handler operation failed",
 				"layer", "handler",
 				"operation", "stream_completion",
 				"error", err)
 		}
 	}
+	// Success completion is already sent by the service as JSON with project state
 	flushResponse(w)
 }
 
@@ -290,7 +286,25 @@ func (h *ProjectHandlers) Stop(w http.ResponseWriter, r *http.Request) {
 
 	err = h.projectManager.Stop(projectID)
 
-	h.handleProjectGridResponse(w, r, err, "project-stopped",
+	// Get the updated project to return the card
+	project, getErr := h.projectManager.Get(projectID)
+	if getErr != nil {
+		slog.Error("Handler operation failed",
+			"layer", "handler",
+			"operation", "get_project_after_stop",
+			"project_id", projectID,
+			"error", getErr)
+		http.Error(w, "Failed to retrieve updated project", http.StatusInternalServerError)
+		return
+	}
+
+	trigger := "project-stopped"
+	if err == nil {
+		// Close the modal on successful stop
+		trigger = fmt.Sprintf("project-stopped,close-modal-stop-project-modal-%s", projectID.String())
+	}
+
+	h.handleProjectCardResponse(w, r, project, err, trigger,
 		"Project stopped successfully", "Project has been stopped and containers have been shut down.",
 		"Failed to stop project", "There was an error stopping the project. Please try again.")
 }
