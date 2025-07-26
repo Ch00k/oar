@@ -110,14 +110,14 @@ templ ProjectCard(project *services.Project) {
 					HoverClass: "hover:text-blue-800 hover:bg-blue-100",
 					Condition:  true,
 				})
-				@ActionButton(ActionButtonConfig{
+				@ActionButtonWithVisibility(ActionButtonConfig{
 					ModalID:    fmt.Sprintf("stop-project-modal-%s", project.ID.String()),
 					Icon:       icon.CircleStop(),
 					Tooltip:    "Stop Project",
 					ColorClass: "text-red-600",
 					HoverClass: "hover:text-red-800 hover:bg-red-100",
-					Condition:  project.Status == services.ProjectStatusRunning,
-				})
+					Condition:  true, // Always render, control visibility with CSS
+				}, project.Status == services.ProjectStatusRunning)
 				@ActionButton(ActionButtonConfig{
 					ModalID:    fmt.Sprintf("edit-project-modal-%s", project.ID.String()),
 					Icon:       icon.SquarePen(),
@@ -176,15 +176,37 @@ templ ActionButton(config ActionButtonConfig) {
 	}
 }
 
+templ ActionButtonWithVisibility(config ActionButtonConfig, visible bool) {
+	if config.Condition {
+		<div class={ "relative group", templ.KV("hidden", !visible) }>
+			if config.ModalID != "" {
+				@modal.Trigger(modal.TriggerProps{For: config.ModalID}) {
+					<button class={ "flex items-center justify-center p-2 rounded-md transition-colors", config.ColorClass, config.HoverClass }>
+						@config.Icon
+					</button>
+				}
+			} else {
+				<button class={ "flex items-center justify-center p-2 rounded-md transition-colors", config.ColorClass, config.HoverClass }>
+					@config.Icon
+				</button>
+			}
+			<div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-gray-200 text-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+				{ config.Tooltip }
+			</div>
+		</div>
+	}
+}
+
 templ statusBadge(status services.ProjectStatus) {
 	<span
 		class={
-			"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+			"inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium status-badge",
 			templ.KV("bg-green-200 text-green-800", status == services.ProjectStatusRunning),
 			templ.KV("bg-gray-200 text-gray-800", status == services.ProjectStatusStopped),
 			templ.KV("bg-red-200 text-red-800", status == services.ProjectStatusError),
 			templ.KV("bg-yellow-200 text-yellow-800", status == services.ProjectStatusUnknown),
 		}
+		data-status={ status.String() }
 	>
 		{ status.String() }
 	</span>
@@ -192,11 +214,11 @@ templ statusBadge(status services.ProjectStatus) {
 
 templ lastCommitBadge(lastCommit *string) {
 	if lastCommit != nil {
-		<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
+		<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 commit-badge" data-commit={ *lastCommit }>
 			{ (*lastCommit)[:8] }
 		</span>
 	} else {
-		<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+		<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 commit-badge" data-commit="">
 			No commits
 		</span>
 	}
@@ -420,9 +442,6 @@ templ deployProjectBody(project *services.Project) {
 		})
 		<form
 			id={ fmt.Sprintf("deploy-project-form-%s", project.ID.String()) }
-			hx-post={ fmt.Sprintf("/projects/%s/deploy", project.ID.String()) }
-			hx-target="#projects-grid"
-			hx-swap="innerHTML"
 		></form>
 	</div>
 }
@@ -467,9 +486,6 @@ templ stopProjectBody(project *services.Project) {
 		})
 		<form
 			id={ fmt.Sprintf("stop-project-form-%s", project.ID.String()) }
-			hx-post={ fmt.Sprintf("/projects/%s/stop", project.ID.String()) }
-			hx-target="#projects-grid"
-			hx-swap="innerHTML"
 		></form>
 	</div>
 }

@@ -6,17 +6,156 @@ function autoScroll(outputContent) {
     }
 }
 
-function setupButtonCloseState(button) {
+function setupButtonCloseState(button, projectId, modalType) {
     button.textContent = 'Close';
     button.disabled = false;
     button.onclick = function () {
-        window.location.reload();
+        // Close the modal instead of reloading the page
+        const modalId = `${modalType}-project-modal-${projectId}`;
+        closeModal(modalId);
+
+        // Update the project card with the stored state information after modal closes
+        setTimeout(() => {
+            updateProjectCardWithState(projectId);
+        }, 100); // Small delay to ensure modal close completes
     };
 }
 
 function addOarText(outputContent, text, type = '') {
+    // Add separation after Docker Compose output if the last message was Docker Compose
+    const needsSeparationBefore = outputContent.lastWasDockerCompose;
+    const prefix = needsSeparationBefore ? '\n' : '';
+
     const className = type ? `oar-text ${type}` : 'oar-text';
-    outputContent.innerHTML += `\n<span class="${className}">${text}</span>\n`;
+    outputContent.innerHTML += `${prefix}<span class="${className}" style="font-style: italic;">${text}</span>\n`;
+    outputContent.lastWasDockerCompose = false;
+}
+
+function addDockerComposeOutput(outputContent, text) {
+    // Check if there's existing content and if the last message was not Docker Compose output
+    const hasExistingContent = outputContent.innerHTML.trim().length > 0;
+    const needsSeparationBefore = hasExistingContent && !outputContent.lastWasDockerCompose;
+
+    // Add separation before Docker Compose output if needed
+    const prefix = needsSeparationBefore ? '\n' : '';
+
+    outputContent.innerHTML += prefix + text + '\n';
+    outputContent.lastWasDockerCompose = true;
+}
+
+// Function to update a project card using stored state information
+function updateProjectCardWithState(projectId) {
+    // Get the stored project state
+    const projectState = window.oarProjectStates && window.oarProjectStates[projectId];
+    if (!projectState) {
+        console.warn('No stored project state found for project:', projectId);
+        return;
+    }
+
+    // Update the status badge
+    updateProjectCardStatus(projectId, projectState.status);
+
+    // Update last commit if provided
+    if (projectState.lastCommit) {
+        updateProjectCardCommit(projectId, projectState.lastCommit);
+    }
+
+    // Update action button visibility based on new status
+    updateProjectActionButtons(projectId, projectState.status);
+
+    // Clean up stored state
+    delete window.oarProjectStates[projectId];
+}
+
+// Function to update project card status badge
+function updateProjectCardStatus(projectId, newStatus) {
+    const statusBadge = document.querySelector(`#project-card-${projectId} .status-badge`);
+    if (!statusBadge) {
+        console.warn('Status badge not found for project:', projectId);
+        return;
+    }
+
+    // Remove all status-related classes
+    statusBadge.classList.remove(
+        'bg-green-200', 'text-green-800',    // running
+        'bg-gray-200', 'text-gray-800',      // stopped
+        'bg-red-200', 'text-red-800',        // error
+        'bg-yellow-200', 'text-yellow-800'   // unknown
+    );
+
+    // Add appropriate classes based on new status
+    switch (newStatus) {
+        case 'running':
+            statusBadge.classList.add('bg-green-200', 'text-green-800');
+            break;
+        case 'stopped':
+            statusBadge.classList.add('bg-gray-200', 'text-gray-800');
+            break;
+        case 'error':
+            statusBadge.classList.add('bg-red-200', 'text-red-800');
+            break;
+        default:
+            statusBadge.classList.add('bg-yellow-200', 'text-yellow-800');
+            newStatus = 'unknown';
+    }
+
+    // Update text content and data attribute
+    statusBadge.textContent = newStatus;
+    statusBadge.setAttribute('data-status', newStatus);
+}
+
+// Function to update project card commit badge
+function updateProjectCardCommit(projectId, newCommit) {
+    const commitBadge = document.querySelector(`#project-card-${projectId} .commit-badge`);
+    if (!commitBadge) {
+        console.warn('Commit badge not found for project:', projectId);
+        return;
+    }
+
+    // Update classes for commit display
+    commitBadge.classList.remove('bg-gray-100', 'text-gray-500'); // no commits style
+    commitBadge.classList.add('bg-gray-200', 'text-gray-800');    // has commits style
+
+    // Update text content (first 8 characters) and data attribute
+    commitBadge.textContent = newCommit.substring(0, 8);
+    commitBadge.setAttribute('data-commit', newCommit);
+}
+
+// Function to update project action buttons based on status
+function updateProjectActionButtons(projectId, newStatus) {
+    // Find the stop button container (now always rendered)
+    const stopButtonTrigger = document.querySelector(`[data-modal-trigger="stop-project-modal-${projectId}"]`);
+
+    if (stopButtonTrigger) {
+        // Find the parent container (div.relative.group)
+        const stopButtonContainer = stopButtonTrigger.closest('.relative.group');
+
+        if (stopButtonContainer) {
+            if (newStatus === 'running') {
+                // Show stop button by removing hidden class
+                stopButtonContainer.classList.remove('hidden');
+            } else {
+                // Hide stop button by adding hidden class
+                stopButtonContainer.classList.add('hidden');
+            }
+        }
+    }
+}
+
+// Generic function to close modal (moved from bottom of file)
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        const closeButton = modal.querySelector('[data-modal-close]');
+        if (closeButton) {
+            closeButton.click();
+        } else {
+            // Fallback: manually trigger close
+            modal.setAttribute('data-open', 'false');
+            modal.style.display = 'none';
+            modal.classList.add('hidden');
+        }
+    }
 }
 
 // Generic streaming handler
@@ -63,55 +202,52 @@ function createStreamingHandler(config) {
     eventSource.onmessage = function (event) {
         const data = event.data;
 
-        // Check if this is a semantic OAR message
-        if (data.startsWith('OAR_MSG:')) {
-            const parts = data.split(':');
-            if (parts.length >= 3) {
-                const type = parts[1]; // default, success, error
-                const message = parts.slice(2).join(':'); // rejoin in case message contains colons
-                const cssType = type === 'default' ? '' : type; // use empty string for default styling
-                addOarText(outputContent, message, cssType);
-            } else {
-                outputContent.innerHTML += data + '\n';
+        try {
+            // Parse JSON message
+            const message = JSON.parse(data);
+
+            // Handle project state updates
+            if (message.projectState) {
+                // Store project state for later use when modal closes
+                if (!window.oarProjectStates) {
+                    window.oarProjectStates = {};
+                }
+                window.oarProjectStates[projectId] = message.projectState;
             }
-        } else {
+
+            // Handle display messages
+            if (message.message) {
+                if (message.type === 'info' && message.source === 'docker') {
+                    // Docker Compose output - display as plain text with separation
+                    addDockerComposeOutput(outputContent, message.message);
+                } else {
+                    // Oar messages (info/success/error) - display with italic styling
+                    addOarText(outputContent, message.message, message.type);
+                }
+            }
+
+            // Handle completion based on message type
+            // Only treat success/error messages with projectState as completion
+            if ((message.type === 'success' || message.type === 'error') && message.projectState) {
+                // This is a completion message, close the stream and setup button
+                eventSource.close();
+
+                if (button) {
+                    setupButtonCloseState(button, projectId, streamType);
+                }
+
+                if (onComplete) {
+                    onComplete(message.type, message.message);
+                }
+            }
+        } catch (e) {
+            // Fallback for non-JSON messages (shouldn't happen with new unified format)
+            console.warn('Received non-JSON message:', data);
             outputContent.innerHTML += data + '\n';
         }
 
         autoScroll(outputContent);
     };
-
-    // Handle successful completion
-    eventSource.addEventListener('complete-success', function (event) {
-        addOarText(outputContent, event.data, 'success');
-        eventSource.close();
-
-        if (button) {
-            setupButtonCloseState(button);
-        }
-
-        autoScroll(outputContent);
-
-        if (onComplete) {
-            onComplete('success', event.data);
-        }
-    });
-
-    // Handle error completion
-    eventSource.addEventListener('complete-error', function (event) {
-        addOarText(outputContent, event.data, 'error');
-        eventSource.close();
-
-        if (button) {
-            setupButtonCloseState(button);
-        }
-
-        autoScroll(outputContent);
-
-        if (onComplete) {
-            onComplete('error', event.data);
-        }
-    });
 
     // Handle connection errors
     eventSource.onerror = function (event) {
@@ -124,7 +260,7 @@ function createStreamingHandler(config) {
         eventSource.close();
 
         if (button) {
-            setupButtonCloseState(button);
+            setupButtonCloseState(button, projectId, streamType);
         }
 
         if (onComplete) {
@@ -301,5 +437,5 @@ document.addEventListener('DOMContentLoaded', function () {
             }, 100); // Give modal time to open
         }
     });
-});
 
+});

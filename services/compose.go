@@ -2,6 +2,7 @@ package services
 
 import (
 	"bufio"
+	"encoding/json"
 	"log/slog"
 	"os/exec"
 	"path/filepath"
@@ -208,7 +209,14 @@ func (p *ComposeProject) executeCommandStreaming(cmd *exec.Cmd, outputChan chan<
 		defer wg.Done()
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
-			outputChan <- scanner.Text()
+			msg := map[string]string{
+				"type":    "info",
+				"message": scanner.Text(),
+				"source":  "docker",
+			}
+			if jsonMsg, err := json.Marshal(msg); err == nil {
+				outputChan <- string(jsonMsg)
+			}
 		}
 	}()
 
@@ -218,7 +226,14 @@ func (p *ComposeProject) executeCommandStreaming(cmd *exec.Cmd, outputChan chan<
 		defer wg.Done()
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			outputChan <- scanner.Text()
+			msg := map[string]string{
+				"type":    "info",
+				"message": scanner.Text(),
+				"source":  "docker",
+			}
+			if jsonMsg, err := json.Marshal(msg); err == nil {
+				outputChan <- string(jsonMsg)
+			}
 		}
 	}()
 

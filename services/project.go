@@ -242,12 +242,12 @@ func (s *ProjectService) DeployStreaming(
 
 	// Pull latest changes if requested
 	if pull {
-		outputChan <- "OAR_MSG:default:Pulling latest changes from Git..."
+		outputChan <- `{"type":"info","message":"Pulling latest changes from Git...","source":"oar"}`
 		if err := s.pullLatestChanges(project); err != nil {
-			outputChan <- fmt.Sprintf("OAR_MSG:error:Failed to pull latest changes: %v", err)
+			outputChan <- fmt.Sprintf(`{"type":"error","message":"Failed to pull latest changes: %v"}`, err)
 			return err
 		}
-		outputChan <- "OAR_MSG:success:Git pull completed successfully"
+		outputChan <- `{"type":"success","message":"Git pull completed successfully"}`
 	}
 
 	commitHash, err := s.gitService.GetLatestCommit(gitDir)
@@ -271,7 +271,7 @@ func (s *ProjectService) DeployStreaming(
 
 	composeProject := NewComposeProject(project)
 
-	outputChan <- "OAR_MSG:default:Starting Docker Compose deployment..."
+	outputChan <- `{"type":"info","message":"Starting Docker Compose deployment...","source":"oar"}`
 	err = composeProject.UpStreaming(outputChan)
 	if err != nil {
 		slog.Error(
@@ -289,8 +289,6 @@ func (s *ProjectService) DeployStreaming(
 		project.ID,
 	)
 
-	outputChan <- "OAR_MSG:success:Docker Compose deployment completed successfully"
-
 	// Update deployment
 	deployment.Status = DeploymentStatusCompleted
 	// deployment.Output = result.Output
@@ -307,6 +305,9 @@ func (s *ProjectService) DeployStreaming(
 	if err := s.projectRepository.Update(project); err != nil {
 		return fmt.Errorf("failed to update project status: %w", err)
 	}
+
+	// Send unified message with both display text and project state
+	outputChan <- fmt.Sprintf(`{"type":"success","message":"Docker Compose deployment completed successfully","projectState":{"status":"running","lastCommit":"%s"}}`, commitHash)
 
 	return nil
 }
@@ -456,7 +457,7 @@ func (s *ProjectService) StopStreaming(projectID uuid.UUID, outputChan chan<- st
 
 	composeProject := NewComposeProject(project)
 
-	outputChan <- "OAR_MSG:default:Starting Docker Compose shutdown..."
+	outputChan <- `{"type":"info","message":"Starting Docker Compose shutdown...","source":"oar"}`
 	err = composeProject.DownStreaming(outputChan)
 	if err != nil {
 		slog.Error(
@@ -474,10 +475,16 @@ func (s *ProjectService) StopStreaming(projectID uuid.UUID, outputChan chan<- st
 		project.ID,
 	)
 
-	outputChan <- "OAR_MSG:success:Docker Compose shutdown completed successfully"
-
 	project.Status = ProjectStatusStopped
-	return s.Update(project)
+	err = s.Update(project)
+	if err != nil {
+		return fmt.Errorf("failed to update project status: %w", err)
+	}
+
+	// Send unified message with both display text and project state
+	outputChan <- `{"type":"success","message":"Docker Compose shutdown completed successfully","projectState":{"status":"stopped"}}`
+
+	return nil
 }
 
 func (s *ProjectService) Remove(projectID uuid.UUID) error {
