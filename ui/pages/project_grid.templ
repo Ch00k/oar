@@ -499,13 +499,38 @@ templ configModalBody(project *services.Project) {
 				<strong>{ project.Name }</strong> after variable interpolation.
 			</p>
 		</div>
-		@CodeOutput(CodeOutputConfig{
-			ProjectID:   project.ID.String(),
-			OutputType:  "config",
-			Height:      "h-96",
-			InitialText: "",
-		})
+		<div
+			id={ fmt.Sprintf("config-content-%s", project.ID.String()) }
+			hx-get={ fmt.Sprintf("/projects/%s/config", project.ID.String()) }
+			hx-trigger="intersect once"
+			hx-swap="innerHTML"
+		>
+			@code.Code(code.Props{
+				ID:        fmt.Sprintf("config-output-code-%s", project.ID.String()),
+				Language:  "yaml",
+				Size:      code.SizeFull,
+				Class:     "bg-gray-900",
+				CodeClass: "text-gray-400 bg-gray-900 text-xs h-96 overflow-y-auto p-2",
+			}) {
+				<div id={ fmt.Sprintf("config-output-content-%s", project.ID.String()) }>
+					<span class="oar-text">Loading configuration...</span>
+				</div>
+			}
+		</div>
 	</div>
+}
+
+templ ConfigContent(configYaml string) {
+	@code.Code(code.Props{
+		Language:  "yaml",
+		Size:      code.SizeFull,
+		Class:     "bg-gray-900",
+		CodeClass: "text-gray-400 bg-gray-900 text-xs h-96 overflow-y-auto p-2",
+	}) {
+		<div>
+			<pre class="whitespace-pre-wrap">{ configYaml }</pre>
+		</div>
+	}
 }
 
 

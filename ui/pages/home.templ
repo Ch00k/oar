@@ -16,12 +16,16 @@ templ Home(projects []*services.Project) {
 					<h1 class="text-3xl font-bold text-gray-900">Dashboard</h1>
 					<p class="text-gray-600 mt-2">Welcome to your GitOps deployment dashboard</p>
 				</div>
-				@modal.Trigger(modal.TriggerProps{For: "add-project-modal"}) {
+				@modal.Trigger(modal.TriggerProps{
+					For: "add-project-modal",
+					Attributes: templ.Attributes{
+						"hx-get":    "/projects/new-form",
+						"hx-target": "#add-project-modal-body",
+						"hx-swap":   "innerHTML",
+					},
+				}) {
 					@button.Button(button.Props{
 						Class: "flex items-center gap-2",
-						Attributes: templ.Attributes{
-							"onclick": "resetAddProjectForm()",
-						},
 					}) {
 						@icon.Plus()
 						Add Project
@@ -39,13 +43,24 @@ templ Home(projects []*services.Project) {
 }
 
 templ addProjectModal() {
-	@GenericModal(ModalConfig{
-		ID:     "add-project-modal",
-		Title:  "Add New Project",
-		Size:   "sm:max-w-lg",
-		Body:   addProjectForm(),
-		Footer: addProjectFooter(),
-	})
+	@modal.Modal(modal.Props{ID: "add-project-modal", Class: "sm:max-w-lg bg-gray-100 shadow-lg", DisableESC: true, DisableClickAway: true}) {
+		@modal.Header(modal.HeaderProps{Class: "bg-gray-200 rounded-t-lg border-b border-gray-300"}) {
+			<div class="flex items-center justify-between">
+				<span>Add New Project</span>
+				@modal.Close() {
+					<button class="text-gray-400 hover:text-gray-600 transition-colors p-1">
+						@icon.X()
+					</button>
+				}
+			</div>
+		}
+		@modal.Body(modal.BodyProps{ID: "add-project-modal-body", Class: "bg-gray-100"}) {
+			@addProjectForm()
+		}
+		@modal.Footer(modal.FooterProps{Class: "bg-gray-100 rounded-b-lg"}) {
+			@addProjectFooter()
+		}
+	}
 }
 
 templ addProjectForm() {

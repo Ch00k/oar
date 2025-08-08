@@ -75,8 +75,9 @@ func (r *projectRepository) Create(project *Project) (*Project, error) {
 func (r *projectRepository) Update(project *Project) error {
 	model := r.mapper.ToModel(project)
 
-	// TODO: This is inefficient because it update all fields, including those that haven't changed.
-	return r.db.Model(&model).Updates(model).Error
+	// Use Select to explicitly update all fields, including empty strings
+	// This ensures that clearing variables (empty string) actually updates the database
+	return r.db.Model(&models.ProjectModel{}).Where("id = ?", model.ID).Select("*").Updates(model).Error
 }
 
 func (r *projectRepository) Delete(id uuid.UUID) error {

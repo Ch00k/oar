@@ -78,37 +78,16 @@ templ ProjectForm(props ProjectFormProps) {
 			@form.Label(form.LabelProps{For: fmt.Sprintf("%s-git-url", props.IDPrefix)}) {
 				Git URL
 			}
-			<div class="flex gap-2">
-				@input.Input(input.Props{
-					ID:          fmt.Sprintf("%s-git-url", props.IDPrefix),
-					Name:        "git_url",
-					Type:        input.TypeText,
-					Placeholder: "https://github.com/user/repo.git or git@github.com:user/repo.git",
-					Value:       getProjectGitURL(props.Project),
-					Required:    true,
-					Disabled:    props.Mode == "edit",
-					Class:       getGitURLFieldClass(props.Mode),
-					Attributes:  templ.Attributes{"onblur": "checkGitAuthFieldsVisibility()"},
-				})
-				if props.Mode == "create" {
-					@actionbutton.ActionButton(actionbutton.ActionButtonConfig{
-						ID:              "discover-button",
-						Icon:            icon.Radar(icon.Props{Class: "!w-6 !h-6 !min-w-[24px] !min-h-[24px] !max-w-[24px] !max-h-[24px]"}),
-						Tooltip:         "Auto-discover compose files",
-						ColorClass:      "text-green-600",
-						HoverClass:      "hover:text-green-800 hover:bg-green-100",
-						Condition:       true,
-						Disabled:        true,
-						Class:           "shrink-0",
-						Attributes:      templ.Attributes{"onclick": "validateAndDiscover()"},
-						ButtonType:      "button",
-						ShowSpinner:     true,
-						SpinnerID:       "discover-indicator",
-						IconID:          "discover-icon",
-						TooltipPosition: "left",
-					})
-				}
-			</div>
+			@input.Input(input.Props{
+				ID:          fmt.Sprintf("%s-git-url", props.IDPrefix),
+				Name:        "git_url",
+				Type:        input.TypeText,
+				Placeholder: "https://github.com/user/repo.git or git@github.com:user/repo.git",
+				Value:       getProjectGitURL(props.Project),
+				Required:    true,
+				Disabled:    props.Mode == "edit",
+				Class:       getGitURLFieldClass(props.Mode),
+			})
 		}
 
 		<!-- Git Authentication -->
@@ -116,7 +95,12 @@ templ ProjectForm(props ProjectFormProps) {
 			@form.Label(form.LabelProps{For: fmt.Sprintf("%s-auth-type", props.IDPrefix)}) {
 				Authentication Type
 			}
-			<div class="flex gap-2">
+			<div class="flex gap-2"
+				hx-post="/projects/auth-fields"
+				hx-target={ fmt.Sprintf("#%s-auth-fields-section", props.IDPrefix) }
+				hx-vals={ fmt.Sprintf(`{"id_prefix": "%s"}`, props.IDPrefix) }
+				hx-trigger="change from:input[name='auth_type']"
+			>
 				@selectbox.SelectBox(selectbox.Props{
 					ID: fmt.Sprintf("%s-auth-type-select", props.IDPrefix),
 				}) {
@@ -124,7 +108,6 @@ templ ProjectForm(props ProjectFormProps) {
 						ID:    fmt.Sprintf("%s-auth-type", props.IDPrefix),
 						Name:  "auth_type",
 						Class: "bg-gray-50 flex-1",
-						Attributes: templ.Attributes{"onchange": fmt.Sprintf("toggleAuthFields('%s')", props.IDPrefix)},
 					}) {
 						@selectbox.Value(selectbox.ValueProps{
 							Placeholder: "None",
@@ -161,9 +144,14 @@ templ ProjectForm(props ProjectFormProps) {
 						ColorClass:      "text-blue-600",
 						HoverClass:      "hover:text-blue-800 hover:bg-blue-100",
 						Condition:       true,
-						Disabled:        true,
+						Disabled:        false,
 						Class:           "shrink-0",
-						Attributes:      templ.Attributes{"onclick": fmt.Sprintf("validateAndTestGitAuth('%s')", props.IDPrefix)},
+						Attributes:      templ.Attributes{
+							"hx-post":     "/test-git-auth",
+							"hx-include":  "[name='git_url'], [name='auth_type'], [name='username'], [name='password'], [name='ssh_user'], [name='ssh_private_key']",
+							"hx-swap":     "none",
+							"hx-indicator": fmt.Sprintf("#%s-test-git-auth-indicator", props.IDPrefix),
+						},
 						ButtonType:      "button",
 						ShowSpinner:     true,
 						SpinnerID:       fmt.Sprintf("%s-test-git-auth-indicator", props.IDPrefix),
@@ -175,65 +163,12 @@ templ ProjectForm(props ProjectFormProps) {
 		}
 
 		<div id={ fmt.Sprintf("%s-auth-fields-section", props.IDPrefix) }>
-			<!-- HTTP Authentication Fields -->
-			<div id={ fmt.Sprintf("%s-http-auth-fields", props.IDPrefix) } class="space-y-4" style={ getAuthFieldsDisplay(props.Project, "http") }>
-				@form.Item() {
-					@form.Label(form.LabelProps{For: fmt.Sprintf("%s-username", props.IDPrefix)}) {
-						Username
-					}
-					@input.Input(input.Props{
-						ID:          fmt.Sprintf("%s-username", props.IDPrefix),
-						Name:        "username",
-						Type:        input.TypeText,
-						Placeholder: "Enter username",
-						Value:       getHTTPUsername(props.Project),
-						Class:       "bg-gray-50 placeholder:text-gray-400",
-					})
-				}
-				@form.Item() {
-					@form.Label(form.LabelProps{For: fmt.Sprintf("%s-password", props.IDPrefix)}) {
-						Password
-					}
-					@input.Input(input.Props{
-						ID:          fmt.Sprintf("%s-password", props.IDPrefix),
-						Name:        "password",
-						Type:        input.TypePassword,
-						Placeholder: "Enter password",
-						Value:       getHTTPPassword(props.Project),
-						Class:       "bg-gray-50 placeholder:text-gray-400",
-					})
-				}
-			</div>
-
-			<!-- SSH Authentication Fields -->
-			<div id={ fmt.Sprintf("%s-ssh-auth-fields", props.IDPrefix) } class="space-y-4" style={ getAuthFieldsDisplay(props.Project, "ssh") }>
-				@form.Item() {
-					@form.Label(form.LabelProps{For: fmt.Sprintf("%s-ssh-user", props.IDPrefix)}) {
-						SSH User
-					}
-					@input.Input(input.Props{
-						ID:          fmt.Sprintf("%s-ssh-user", props.IDPrefix),
-						Name:        "ssh_user",
-						Type:        input.TypeText,
-						Placeholder: "Enter SSH user (e.g., git)",
-						Value:       getSSHUser(props.Project),
-						Class:       "bg-gray-50 placeholder:text-gray-400",
-					})
-				}
-				@form.Item() {
-					@form.Label(form.LabelProps{For: fmt.Sprintf("%s-ssh-key", props.IDPrefix)}) {
-						SSH Private Key
-					}
-					@textarea.Textarea(textarea.Props{
-						ID:          fmt.Sprintf("%s-ssh-key", props.IDPrefix),
-						Name:        "ssh_private_key",
-						Placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
-						Rows:        3,
-						Value:       getSSHPrivateKey(props.Project),
-						Class:       "bg-gray-50 placeholder:text-gray-400",
-					})
-				}
-			</div>
+			<!-- Dynamic auth fields will be loaded here by HTMX -->
+			@AuthFields(AuthFieldsProps{
+				AuthType: getAuthType(props.Project),
+				IDPrefix: props.IDPrefix,
+				Project:  props.Project,
+			})
 		</div>
 
 		<!-- Compose Files Section -->
@@ -242,13 +177,54 @@ templ ProjectForm(props ProjectFormProps) {
 				@form.Label(form.LabelProps{For: fmt.Sprintf("%s-compose-files", props.IDPrefix)}) {
 					Compose Files
 				}
-				@tagsinput.TagsInput(tagsinput.Props{
-					ID:          fmt.Sprintf("%s-compose-files", props.IDPrefix),
-					Name:        "compose_files",
-					Placeholder: "Add compose file...",
-					Value:       getProjectComposeFiles(props.Project),
-					Class:       "bg-gray-50 [&_input]:placeholder:text-gray-400",
-				})
+				<div class="flex gap-2">
+					<div class="flex-1 relative">
+						<div
+							hx-post="/projects/validate/compose-files"
+							hx-trigger="change delay:500ms from:[data-tags-input]"
+							hx-target={ fmt.Sprintf("#%s-compose-validation", props.IDPrefix) }
+							hx-swap="innerHTML"
+							hx-include="[name='compose_files']"
+						>
+							@tagsinput.TagsInput(tagsinput.Props{
+								ID:          fmt.Sprintf("%s-compose-files", props.IDPrefix),
+								Name:        "compose_files",
+								Placeholder: "Add compose file...",
+								Value:       getProjectComposeFiles(props.Project),
+								Class:       "bg-gray-50 [&_input]:placeholder:text-gray-400",
+							})
+						</div>
+						<div id={ fmt.Sprintf("%s-compose-validation", props.IDPrefix) } class="absolute top-full left-0 right-0 z-10"></div>
+						<!-- Compose file suggestions hint -->
+						<div class="mt-1 text-xs text-gray-500">
+							Common files: docker-compose.yml, compose.yml, docker-compose.dev.yml
+						</div>
+					</div>
+					if props.Mode == "create" {
+						@actionbutton.ActionButton(actionbutton.ActionButtonConfig{
+							ID:              "discover-button",
+							Icon:            icon.Radar(icon.Props{Class: "!w-6 !h-6 !min-w-[24px] !min-h-[24px] !max-w-[24px] !max-h-[24px]"}),
+							Tooltip:         "Auto-discover compose files from repository",
+							ColorClass:      "text-green-600",
+							HoverClass:      "hover:text-green-800 hover:bg-green-100",
+							Condition:       true,
+							Disabled:        false,
+							Class:           "shrink-0",
+							Attributes:      templ.Attributes{
+								"hx-post":     "/discover",
+								"hx-target":   fmt.Sprintf("#%s-compose-files-section", props.IDPrefix),
+								"hx-include":  "[name='git_url'], [name='auth_type'], [name='username'], [name='password'], [name='ssh_user'], [name='ssh_private_key']",
+								"hx-swap":     "innerHTML",
+								"hx-indicator": "#discover-indicator",
+							},
+							ButtonType:      "button",
+							ShowSpinner:     true,
+							SpinnerID:       "discover-indicator",
+							IconID:          "discover-icon",
+							TooltipPosition: "left",
+						})
+					}
+				</div>
 			}
 		</div>
 
@@ -340,13 +316,6 @@ func getSSHPrivateKey(project *services.Project) string {
 	return project.GitAuth.SSHAuth.PrivateKey
 }
 
-func getAuthFieldsDisplay(project *services.Project, authType string) string {
-	currentAuthType := getAuthType(project)
-	if currentAuthType == authType {
-		return "display: block;"
-	}
-	return "display: none;"
-}
 
 
 func getGitURLFieldClass(mode string) string {

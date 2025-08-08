@@ -2,14 +2,17 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/a-h/templ"
 	"github.com/ch00k/oar/services"
+	"github.com/ch00k/oar/ui/components/projectform"
 	"github.com/ch00k/oar/ui/pages"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -182,6 +185,14 @@ func (h *ProjectHandlers) Create(w http.ResponseWriter, r *http.Request) {
 	variables := parseVariablesFromRaw(r.FormValue("variables_raw"))
 	tempClonePath := r.FormValue("temp_clone_path")
 
+	// Validate form data
+	if validationError := h.validateProjectForm(name, gitURL); validationError != "" {
+		h.handleProjectGridResponse(w, r, errors.New(validationError), "project-creation-failed",
+			"Project created successfully", "New project has been added and cloned.",
+			"Failed to create project", validationError)
+		return
+	}
+
 	// Create project and set Git authentication
 	project := services.NewProject(name, gitURL, composeFiles, variables)
 	project.GitAuth = CreateTempAuthConfig(r)
@@ -338,21 +349,18 @@ func (h *ProjectHandlers) GetConfig(w http.ResponseWriter, r *http.Request) {
 			"operation", "get_config",
 			"project_id", projectID,
 			"error", err)
-		http.Error(w, "Failed to get project configuration", http.StatusInternalServerError)
+
+		// Return error message in HTML format
+		errorMessage := fmt.Sprintf("Failed to get project configuration: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = fmt.Fprintf(w, `<div class="text-red-600">%s</div>`, errorMessage)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(config)); err != nil {
-		slog.Error("Handler operation failed",
-			"layer", "handler",
-			"operation", "write_config_response",
-			"project_id", projectID,
-			"error", err)
-		http.Error(w, "Failed to write project configuration", http.StatusInternalServerError)
-		return
-	}
+	// Return just the config content using the configContent template
+	component := pages.ConfigContent(config)
+	renderComponentWithError(w, r, component, "Failed to render config content")
 }
 
 // Helper function to build project from form data
@@ -407,6 +415,135 @@ func parseVariablesFromRaw(raw string) []string {
 	return variables
 }
 
+// AuthFields handles dynamic rendering of authentication fields based on auth type
+func (h *ProjectHandlers) AuthFields(w http.ResponseWriter, r *http.Request) {
+	authType := r.FormValue("auth_type")
+	idPrefix := r.FormValue("id_prefix")
+
+	// Default to empty if not provided
+	if idPrefix == "" {
+		idPrefix = "new-project"
+	}
+
+	// For edit mode, we might have a project ID to get existing values
+	var project *services.Project
+	if projectIDStr := r.FormValue("project_id"); projectIDStr != "" {
+		if projectID, err := uuid.Parse(projectIDStr); err == nil {
+			project, _ = h.projectManager.Get(projectID)
+		}
+	}
+
+	component := projectform.AuthFields(projectform.AuthFieldsProps{
+		AuthType: authType,
+		IDPrefix: idPrefix,
+		Project:  project,
+	})
+
+	renderComponentWithError(w, r, component, "Failed to render auth fields")
+}
+
+// NewForm renders a fresh project creation form for modal loading
+func (h *ProjectHandlers) NewForm(w http.ResponseWriter, r *http.Request) {
+	component := projectform.ProjectForm(projectform.ProjectFormProps{
+		Mode:       "create",
+		Project:    nil,
+		FormID:     "add-project-form",
+		FormAction: "/projects/create",
+		FormTarget: "#projects-grid",
+		FormSwap:   "innerHTML",
+		IDPrefix:   "new-project",
+	})
+
+	renderComponentWithError(w, r, component, "Failed to render project form")
+}
+
+// ValidateComposeFiles validates Docker Compose file paths
+func (h *ProjectHandlers) ValidateComposeFiles(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	composeFiles := r.Form["compose_files"]
+	if len(composeFiles) == 0 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var warnings []string
+	var errors []string
+
+	for _, file := range composeFiles {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+
+		// Validate compose file format
+		if !isValidComposeFile(file) {
+			errors = append(errors, fmt.Sprintf("'%s' is not a valid compose file name", file))
+			continue
+		}
+
+		// Check for common patterns
+		if !strings.Contains(file, ".yml") && !strings.Contains(file, ".yaml") {
+			warnings = append(warnings, fmt.Sprintf("'%s' should end with .yml or .yaml", file))
+		}
+	}
+
+	// Return validation feedback
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+
+	if len(errors) > 0 {
+		_, _ = fmt.Fprintf(w, `<div class="mt-1 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+			<div class="font-medium">Invalid files:</div>
+			<ul class="list-disc list-inside">%s</ul>
+		</div>`, strings.Join(formatListItems(errors), ""))
+	} else if len(warnings) > 0 {
+		_, _ = fmt.Fprintf(w, `<div class="mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-700 text-xs">
+			<div class="font-medium">Suggestions:</div>
+			<ul class="list-disc list-inside">%s</ul>
+		</div>`, strings.Join(formatListItems(warnings), ""))
+	} else {
+		_, _ = fmt.Fprintf(w, `<div class="mt-1 p-2 bg-green-50 border border-green-200 rounded text-green-700 text-xs">
+			✓ All compose files look valid
+		</div>`)
+	}
+}
+
+// Helper function to validate compose file format
+func isValidComposeFile(filename string) bool {
+	// Must contain valid characters
+	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9._/-]+$`, filename); !matched {
+		return false
+	}
+
+	// Common compose file patterns
+	validPatterns := []string{
+		"compose.yml", "compose.yaml",
+		"docker-compose.yml", "docker-compose.yaml",
+		".yml", ".yaml", // Files ending with these extensions
+	}
+
+	for _, pattern := range validPatterns {
+		if strings.Contains(filename, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Helper function to format list items for HTML
+func formatListItems(items []string) []string {
+	var formatted []string
+	for _, item := range items {
+		formatted = append(formatted, fmt.Sprintf("<li>%s</li>", item))
+	}
+	return formatted
+}
+
 // RegisterRoutes registers all project-related routes
 func (h *ProjectHandlers) RegisterRoutes(r chi.Router) {
 	r.Post("/projects/create", h.Create)
@@ -416,4 +553,56 @@ func (h *ProjectHandlers) RegisterRoutes(r chi.Router) {
 	r.Get("/projects/{projectID}/stop/stream", h.StopStream)
 	r.Get("/projects/{projectID}/logs/stream", h.LogsStream)
 	r.Get("/projects/{projectID}/config", h.GetConfig)
+	r.Post("/projects/auth-fields", h.AuthFields)
+	r.Get("/projects/new-form", h.NewForm)
+	r.Post("/projects/validate/compose-files", h.ValidateComposeFiles)
+}
+
+// validateProjectForm validates the project creation form
+func (h *ProjectHandlers) validateProjectForm(name, gitURL string) string {
+	// Validate project name
+	if name == "" {
+		return "Project name is required"
+	}
+
+	// Check for valid characters (alphanumeric, dash, underscore)
+	if matched, _ := regexp.MatchString("^[a-zA-Z0-9_-]+$", name); !matched {
+		return "Project name can only contain letters, numbers, dashes, and underscores"
+	}
+
+	// Check name uniqueness
+	existingProject, err := h.projectManager.GetByName(name)
+	if err == nil && existingProject != nil {
+		return "Project name already exists"
+	}
+
+	// Validate Git URL
+	if gitURL == "" {
+		return "Git URL is required"
+	}
+
+	// Basic URL validation for Git repositories
+	if !isValidGitURL(gitURL) {
+		return "Invalid Git URL format"
+	}
+
+	return ""
+}
+
+// Helper function to validate Git URL format
+func isValidGitURL(url string) bool {
+	// HTTP/HTTPS URLs
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		if strings.Contains(url, ".git") || strings.Contains(url, "github.com") ||
+			strings.Contains(url, "gitlab.com") || strings.Contains(url, "bitbucket.org") {
+			return true
+		}
+	}
+
+	// SSH URLs (git@host:user/repo.git format)
+	if strings.HasPrefix(url, "git@") && strings.Contains(url, ":") && strings.HasSuffix(url, ".git") {
+		return true
+	}
+
+	return false
 }

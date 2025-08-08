@@ -33,148 +33,19 @@ templ Base(title string) {
 					</div>
 				</main>
 			</div>
-
 			<!-- Toast Container -->
 			<div id="toast-container"></div>
-
 			@modal.Script()
 			@input.Script()
 			@tagsinput.Script()
 			@popover.Script()
 			@selectbox.Script()
 			@toast.Script()
-			<!-- Streaming system modules -->
-			<script src="/assets/js/streaming/ui-utils.js"></script>
-			<script src="/assets/js/streaming/state-manager.js"></script>
-			<script src="/assets/js/streaming/modal-manager.js"></script>
-			<script src="/assets/js/streaming/core.js"></script>
-			<script src="/assets/js/streaming/operations.js"></script>
+			<!-- Application JavaScript -->
 			<script src="/assets/js/streaming.js"></script>
-			<script src="/assets/js/discovery.js"></script>
-			<script>
-				// Handle successful project update - close modal
-				document.body.addEventListener('htmx:afterRequest', function(e) {
-					// Check if this was a successful project edit request
-					const hxTrigger = e.detail.xhr.getResponseHeader('HX-Trigger');
-
-					if (e.detail.xhr.status === 200) {
-						if (hxTrigger && hxTrigger.startsWith('project-updated-')) {
-							const projectId = hxTrigger.replace('project-updated-', '');
-							const modal = document.querySelector(`#edit-project-modal-${projectId}`);
-							if (modal) {
-								// Find and click the close button to properly close the modal
-								const closeButton = modal.querySelector('[data-modal-close]');
-								if (closeButton) {
-									closeButton.click();
-								} else {
-									// Fallback: manually hide the modal
-									modal.style.display = 'none';
-									modal.classList.add('hidden');
-									modal.setAttribute('data-open', 'false');
-								}
-							}
-						} else if (hxTrigger === 'project-created') {
-							// Close the add project modal
-							const modal = document.querySelector('#add-project-modal');
-							if (modal) {
-								const closeButton = modal.querySelector('[data-modal-close]');
-								if (closeButton) {
-									closeButton.click();
-								}
-							}
-						} else if (hxTrigger === 'project-deleted') {
-							// Close any open delete confirmation modals
-							const modals = document.querySelectorAll('[id^="delete-project-modal-"]');
-							modals.forEach(modal => {
-								const closeButton = modal.querySelector('[data-modal-close]');
-								if (closeButton) {
-									closeButton.click();
-								}
-							});
-						} else if (hxTrigger === 'project-started') {
-							// Close any open start confirmation modals
-							const modals = document.querySelectorAll('[id^="start-project-modal-"]');
-							modals.forEach(modal => {
-								const closeButton = modal.querySelector('[data-modal-close]');
-								if (closeButton) {
-									closeButton.click();
-								}
-							});
-						} else if (hxTrigger === 'project-stopped') {
-							// Close any open stop confirmation modals
-							const modals = document.querySelectorAll('[id^="stop-project-modal-"]');
-							modals.forEach(modal => {
-								const closeButton = modal.querySelector('[data-modal-close]');
-								if (closeButton) {
-									closeButton.click();
-								}
-							});
-						}
-					}
-				});
-
-				// Re-initialize templUI components after HTMX swaps
-				document.body.addEventListener("htmx:afterSwap", (e) => {
-					if (window.templUI) {
-						Object.values(window.templUI).forEach(comp => {
-							comp.init?.(e.detail.elt);
-						});
-					}
-				});
-
-                // Re-initialize components after out-of-band swaps
-                document.body.addEventListener("htmx:oobAfterSwap", (e) => {
-                    if (window.templUI) {
-                        Object.values(window.templUI).forEach(comp => {
-                            comp.init?.(e.detail.target);
-                        });
-                    }
-                });
-
-                // Cleanup before swap (for components with event listeners)
-                document.body.addEventListener("htmx:beforeSwap", (e) => {
-                    if (window.templUI) {
-                        Object.values(window.templUI).forEach(comp => {
-                            comp.cleanup?.(e.detail.target);
-                        });
-                    }
-                });
-
-				// Handle authentication type selection
-				function handleAuthTypeChange(value) {
-					const httpFields = document.getElementById('http-auth-fields');
-					const sshFields = document.getElementById('ssh-auth-fields');
-
-					if (!httpFields || !sshFields) return;
-
-					// Hide all auth fields by default
-					httpFields.style.display = 'none';
-					sshFields.style.display = 'none';
-
-					// Show appropriate fields based on selection
-					if (value === 'http') {
-						httpFields.style.display = 'block';
-					} else if (value === 'ssh') {
-						sshFields.style.display = 'block';
-					}
-				}
-
-
-				// Initialize auth type handler
-				document.addEventListener('DOMContentLoaded', function() {
-					// Listen for selectbox changes using the TemplUI change event
-					document.addEventListener('change', function(e) {
-						if (e.target && e.target.name === 'auth_type') {
-							console.log('Auth type changed to:', e.target.value);
-							handleAuthTypeChange(e.target.value);
-						}
-					});
-
-					// Set up initial state (default to 'none')
-					handleAuthTypeChange('none');
-				});
-
-            </script>
+			<script src="/assets/js/modal-handlers.js"></script>
+			<script src="/assets/js/htmx-integration.js"></script>
+			<script src="/assets/js/action-buttons.js"></script>
 		</body>
 	</html>
 }

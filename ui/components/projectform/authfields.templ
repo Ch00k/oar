@@ -1,0 +1,79 @@
+package projectform
+
+import (
+	"github.com/ch00k/oar/ui/components/form"
+	"github.com/ch00k/oar/ui/components/input"
+	"github.com/ch00k/oar/ui/components/textarea"
+	"github.com/ch00k/oar/services"
+	"fmt"
+)
+
+type AuthFieldsProps struct {
+	AuthType  string
+	IDPrefix  string
+	Project   *services.Project
+}
+
+templ AuthFields(props AuthFieldsProps) {
+	if props.AuthType == "http" {
+		<!-- HTTP Authentication Fields -->
+		<div class="space-y-4">
+			@form.Item() {
+				@form.Label(form.LabelProps{For: fmt.Sprintf("%s-username", props.IDPrefix)}) {
+					Username
+				}
+				@input.Input(input.Props{
+					ID:          fmt.Sprintf("%s-username", props.IDPrefix),
+					Name:        "username",
+					Type:        input.TypeText,
+					Placeholder: "Enter username",
+					Value:       getHTTPUsername(props.Project),
+					Class:       "bg-gray-50 placeholder:text-gray-400",
+				})
+			}
+			@form.Item() {
+				@form.Label(form.LabelProps{For: fmt.Sprintf("%s-password", props.IDPrefix)}) {
+					Password
+				}
+				@input.Input(input.Props{
+					ID:          fmt.Sprintf("%s-password", props.IDPrefix),
+					Name:        "password",
+					Type:        input.TypePassword,
+					Placeholder: "Enter password",
+					Value:       getHTTPPassword(props.Project),
+					Class:       "bg-gray-50 placeholder:text-gray-400",
+				})
+			}
+		</div>
+	} else if props.AuthType == "ssh" {
+		<!-- SSH Authentication Fields -->
+		<div class="space-y-4">
+			@form.Item() {
+				@form.Label(form.LabelProps{For: fmt.Sprintf("%s-ssh-user", props.IDPrefix)}) {
+					SSH User
+				}
+				@input.Input(input.Props{
+					ID:          fmt.Sprintf("%s-ssh-user", props.IDPrefix),
+					Name:        "ssh_user",
+					Type:        input.TypeText,
+					Placeholder: "Enter SSH user (e.g., git)",
+					Value:       getSSHUser(props.Project),
+					Class:       "bg-gray-50 placeholder:text-gray-400",
+				})
+			}
+			@form.Item() {
+				@form.Label(form.LabelProps{For: fmt.Sprintf("%s-ssh-key", props.IDPrefix)}) {
+					SSH Private Key
+				}
+				@textarea.Textarea(textarea.Props{
+					ID:          fmt.Sprintf("%s-ssh-key", props.IDPrefix),
+					Name:        "ssh_private_key",
+					Placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+					Rows:        3,
+					Value:       getSSHPrivateKey(props.Project),
+					Class:       "bg-gray-50 placeholder:text-gray-400",
+				})
+			}
+		</div>
+	}
+}
